@@ -4,9 +4,9 @@
 import type { Board, FieldDef, Status, Task, TreeNode, User } from "../api/types";
 
 const users: User[] = [
-  { id: "alice", name: "Alice Admin", email: "a@x", role: "admin" },
-  { id: "bob", name: "Bob Builder", email: "b@x", role: "member" },
-  { id: "carol", name: "Carol Chen", email: "c@x", role: "member" },
+  { id: "priya", name: "Priya Sharma", email: "a@x", role: "admin" },
+  { id: "rahul", name: "Rahul Verma", email: "b@x", role: "member" },
+  { id: "ananya", name: "Ananya Iyer", email: "c@x", role: "member" },
 ];
 
 const st = (key: string, name: string, category: Status["category"], color: string, position: number): Status => ({
@@ -29,8 +29,8 @@ const fields: FieldDef[] = [
 ];
 
 const task = (id: string, listId: string, title: string, statusKey: string, cf: Task["customFields"]): Task => ({
-  id, listId, title, description: "", statusKey, priority: "normal", assigneeIds: ["bob"], dueDate: null,
-  customFields: cf, position: 1, version: 1, createdBy: "alice", createdAt: "", updatedAt: "",
+  id, listId, title, description: "", statusKey, priority: "normal", assigneeIds: ["rahul"], dueDate: null,
+  customFields: cf, position: 1, version: 1, createdBy: "priya", createdAt: "", updatedAt: "",
 });
 
 export function createFakeApi() {
@@ -45,7 +45,7 @@ export function createFakeApi() {
     const node = (id: string, type: TreeNode["type"], name: string, children: TreeNode[] = [], visibility: "public" | "private" = "public"): TreeNode =>
       ({ id, workspaceId: "ws", type, parentId: null, name, position: 0, visibility, children });
     const lists = [node("lst_backlog", "list", "Backlog"), node("lst_sprint", "list", "Sprint 12")];
-    if (user !== "bob") lists.push(node("lst_security", "list", "Security Audit", [], "private"));
+    if (user !== "rahul") lists.push(node("lst_security", "list", "Security Audit", [], "private"));
     return node("ws", "workspace", "Acme", [node("spc_eng", "space", "Engineering", [node("fld_q2", "folder", "Q2 Launch", lists)])]);
   };
 
@@ -67,7 +67,7 @@ export function createFakeApi() {
     if (path === "/tree") return json(200, tree(user));
     if ((m = path.match(/^\/lists\/([^/]+)\/board$/))) {
       const listId = m[1];
-      if (user === "bob" && listId === "lst_security") return json(403, { error: { code: "FORBIDDEN", message: "no access" } });
+      if (user === "rahul" && listId === "lst_security") return json(403, { error: { code: "FORBIDDEN", message: "no access" } });
       const statuses = statusesByList[listId];
       const board: Board = {
         listId, statuses, fields, unmapped: 0, truncated: false,

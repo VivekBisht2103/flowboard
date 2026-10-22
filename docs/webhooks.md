@@ -28,10 +28,10 @@ Pure reorders within a column emit nothing.
   "type": "task.updated",
   "occurredAt": "2026-10-21T09:08:15.991899868Z",
   "workspaceId": "ws_acme",
-  "actor": { "id": "bob", "name": "Bob Builder" },
+  "actor": { "id": "rahul", "name": "Rahul Verma" },
   "task": { "id": "tsk_seed_02", "title": "Rate-limit public API", "listId": "lst_backlog", "statusKey": "todo" },
   "changes": { "priority": { "from": "urgent", "to": "high" } },
-  "summary": "Bob Builder updated \"Rate-limit public API\""
+  "summary": "Rahul Verma updated \"Rate-limit public API\""
 }
 ```
 
@@ -44,10 +44,10 @@ Pure reorders within a column emit nothing.
   "type": "task.status_changed",
   "occurredAt": "…",
   "workspaceId": "ws_acme",
-  "actor": { "id": "alice", "name": "Alice Admin" },
+  "actor": { "id": "priya", "name": "Priya Sharma" },
   "task": { "id": "tsk_seed_10", "title": "Billing page empty state", "listId": "lst_sprint", "statusKey": "qa" },
   "changes": { "statusKey": { "from": "todo", "to": "qa" } },
-  "summary": "Alice Admin moved \"Billing page empty state\" from Ready to QA"
+  "summary": "Priya Sharma moved \"Billing page empty state\" from Ready to QA"
 }
 ```
 
@@ -62,7 +62,7 @@ Pure reorders within a column emit nothing.
     "statusKey": { "from": "in_review", "to": "blocked" },
     "customFields": { "labels": { "from": ["feature"], "to": null } }
   },
-  "summary": "Alice Admin moved \"Dark mode for settings\" from Backlog to Sprint 12 (Blocked)"
+  "summary": "Priya Sharma moved \"Dark mode for settings\" from Backlog to Sprint 12 (Blocked)"
 }
 ```
 
@@ -72,7 +72,7 @@ Pure reorders within a column emit nothing.
 {
   "type": "status.remapped",
   "changes": { "listId": "lst_sprint", "from": "qa", "to": "in_progress", "taskCount": 2 },
-  "summary": "Alice Admin remapped 2 task(s) in Sprint 12 from qa to in_progress"
+  "summary": "Priya Sharma remapped 2 task(s) in Sprint 12 from qa to in_progress"
 }
 ```
 

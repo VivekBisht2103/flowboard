@@ -1,7 +1,7 @@
 // Command fbctl is a thin CLI channel over the same /v1 API the web UI uses.
 // It proves the API is channel-agnostic: no UI-only endpoints, same auth, same errors.
 //
-//	export FLOWBOARD_URL=http://localhost:8080   FLOWBOARD_USER=bob
+//	export FLOWBOARD_URL=http://localhost:8080   FLOWBOARD_USER=rahul
 //	fbctl tree
 //	fbctl board lst_sprint
 //	fbctl tasks lst_backlog --sort dueDate --cf component=backend
@@ -25,7 +25,7 @@ import (
 
 var (
 	base  = envOr("FLOWBOARD_URL", "http://localhost:8080")
-	user  = envOr("FLOWBOARD_USER", "alice")
+	user  = envOr("FLOWBOARD_USER", "priya")
 	token = os.Getenv("FLOWBOARD_TOKEN")
 )
 

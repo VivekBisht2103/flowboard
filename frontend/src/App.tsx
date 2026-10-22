@@ -28,7 +28,7 @@ function collectLists(n: TreeNode | null, out: { id: string; name: string }[] = 
 }
 
 export default function App() {
-  const [userId, setUserId] = useState(() => readStored(USER_KEY) ?? "alice");
+  const [userId, setUserId] = useState(() => readStored(USER_KEY) ?? "priya");
   const [me, setMe] = useState<User | null>(null);
   const [users, setUsers] = useState<User[]>([]);
   const [tree, setTree] = useState<TreeNode | null>(null);
@@ -87,12 +87,15 @@ export default function App() {
   return (
     <div className="app">
       <aside className="rail">
-        <div className="brand">Flowboard</div>
+        <div className="brand">
+          <span className="brand-mark" aria-hidden>F</span>
+          <span className="brand-name">Flowboard</span>
+        </div>
         <Sidebar tree={tree} selectedId={selectedId} onSelect={(n) => { setSelectedId(n.id); if (n.type !== "list") setView("settings"); else if (view === "settings") setView("board"); }} />
         <label className="acting-as">
           <span>Acting as</span>
           <select aria-label="Acting as" value={userId} onChange={(e) => setUserId(e.target.value)}>
-            {(users.length ? users : [{ id: "alice", name: "Alice Admin" }, { id: "bob", name: "Bob Builder" }, { id: "carol", name: "Carol Chen" }] as User[])
+            {(users.length ? users : [{ id: "priya", name: "Priya Sharma" }, { id: "rahul", name: "Rahul Verma" }, { id: "ananya", name: "Ananya Iyer" }] as User[])
               .map((u) => <option key={u.id} value={u.id}>{u.name}{u.role ? ` (${u.role})` : ""}</option>)}
           </select>
         </label>

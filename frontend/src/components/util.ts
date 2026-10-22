@@ -67,3 +67,16 @@ export function firstList(root: TreeNode | null): TreeNode | null {
   }
   return null;
 }
+
+// Muted, distinguishable avatar tones; the same user always gets the same one.
+const AVATAR_TONES = [
+  ["#e8eefc", "#2f4fb3"], ["#e6f4ef", "#1f7a55"], ["#fbefe6", "#a4521b"],
+  ["#f1ebfb", "#6a3fb0"], ["#e7f3f8", "#1c6f8c"], ["#fbeaec", "#a3343f"],
+];
+
+export function avatarStyle(id: string): { background: string; color: string } {
+  let h = 0;
+  for (const ch of id) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  const [background, color] = AVATAR_TONES[h % AVATAR_TONES.length];
+  return { background, color };
+}

@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { api, ApiError } from "../api/client";
 import type { FieldDef, Status, Task, User } from "../api/types";
-import { formatFieldValue, initials, isOverdue, priorityLabel, shortDate, userName } from "./util";
+import { avatarStyle, formatFieldValue, initials, isOverdue, priorityLabel, shortDate, userName } from "./util";
 
 interface Props {
   listId: string;
@@ -98,7 +98,7 @@ export function ListView({ listId, statuses, fields, users, refreshKey, onOpenTa
                   <td><span className="status-pill" style={{ ["--status" as string]: st?.color }}>{st?.name ?? t.statusKey}</span></td>
                   <td>
                     <span className="avatars">
-                      {t.assigneeIds.map((id) => <span key={id} className="avatar" title={userName(users, id)}>{initials(userName(users, id))}</span>)}
+                      {t.assigneeIds.map((id) => <span key={id} className="avatar" style={avatarStyle(id)} title={userName(users, id)}>{initials(userName(users, id))}</span>)}
                     </span>
                   </td>
                   <td><span className={`prio prio-${t.priority}`}>{priorityLabel[t.priority]}</span></td>

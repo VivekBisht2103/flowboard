@@ -48,15 +48,15 @@ test("drag a card to another column updates its status", async ({ page }) => {
   await expect(column(page, to)).toContainText("Terraform state lock contention");
 });
 
-test("switching Alice → Bob hides the private Security Audit list", async ({ page }) => {
+test("switching Priya → Rahul hides the private Security Audit list", async ({ page }) => {
   await page.goto("/");
   const tree = page.getByRole("tree");
   await expect(tree.getByText("Security Audit")).toBeVisible();
-  await page.getByLabel("Acting as").selectOption("bob");
+  await page.getByLabel("Acting as").selectOption("rahul");
   await expect(tree.getByText("Security Audit")).toHaveCount(0);
-  await expect(tree.getByText("Content Calendar")).toBeVisible(); // Bob's grant on Marketing
-  await page.getByLabel("Acting as").selectOption("carol");
+  await expect(tree.getByText("Content Calendar")).toBeVisible(); // Rahul's grant on Marketing
+  await page.getByLabel("Acting as").selectOption("ananya");
   await expect(tree.getByText("Security Audit")).toBeVisible();
   await expect(tree.getByText("Backlog")).toHaveCount(0); // explicit deny
-  await page.getByLabel("Acting as").selectOption("alice");
+  await page.getByLabel("Acting as").selectOption("priya");
 });

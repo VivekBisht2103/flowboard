@@ -5,7 +5,7 @@ import {
 } from "@dnd-kit/core";
 import { api, ApiError } from "../api/client";
 import type { Board as BoardData, Column, FieldDef, Task, User } from "../api/types";
-import { formatFieldValue, initials, isOverdue, priorityLabel, shortDate, userName } from "./util";
+import { avatarStyle, formatFieldValue, initials, isOverdue, priorityLabel, shortDate, userName } from "./util";
 
 interface Props {
   board: BoardData;
@@ -133,20 +133,22 @@ function CardBody({ task, users, badgeField, lifted }: { task: Task; users: User
   const option = badgeField?.options.find((o) => o.id === badge);
   return (
     <article className={`card edge-${task.priority} ${lifted ? "lifted" : ""}`}>
-      <p className="card-title">{task.title}</p>
+      <div className="card-top">
+        <p className="card-title">{task.title}</p>
+        <span className="avatars">
+          {task.assigneeIds.map((id) => (
+            <span key={id} className="avatar" style={avatarStyle(id)} title={userName(users, id)}>{initials(userName(users, id))}</span>
+          ))}
+        </span>
+      </div>
       <div className="card-meta">
         {task.priority !== "none" && <span className={`prio prio-${task.priority}`}>{priorityLabel[task.priority]}</span>}
         {badgeField && badge !== undefined && (
-          <span className="badge" style={option?.color ? { color: option.color, borderColor: option.color } : undefined}>
+          <span className="badge" style={option?.color ? { ["--dot" as string]: option.color } : undefined}>
             {formatFieldValue(badgeField, badge)}
           </span>
         )}
         {task.dueDate && <span className={`due ${isOverdue(task.dueDate) ? "overdue" : ""}`}>{shortDate(task.dueDate)}</span>}
-        <span className="avatars">
-          {task.assigneeIds.map((id) => (
-            <span key={id} className="avatar" title={userName(users, id)}>{initials(userName(users, id))}</span>
-          ))}
-        </span>
       </div>
     </article>
   );

@@ -4,7 +4,7 @@
 //
 // Accepted credentials (mock identity for the take-home):
 //   - Authorization: Bearer <JWT HS256 { userId, role, exp }>  (short-lived, issued by POST /v1/auth/token)
-//   - X-User-Id: alice | bob | carol                          (dev convenience; can be disabled)
+//   - X-User-Id: priya | rahul | ananya                          (dev convenience; can be disabled)
 //
 // The JWT's role claim is informational only: the role is always re-read from the
 // users table, so a forged or stale role claim grants nothing.
@@ -186,7 +186,7 @@ func (s *Service) Verify(tok string) (*Claims, error) {
 	return &c, nil
 }
 
-// IssueHandler is the dev-only token endpoint: POST /v1/auth/token { "userId": "bob" }.
+// IssueHandler is the dev-only token endpoint: POST /v1/auth/token { "userId": "rahul" }.
 // In production this is replaced by an OIDC provider; see README "Auth".
 func (s *Service) IssueHandler(w http.ResponseWriter, r *http.Request) error {
 	if !s.Cfg.EnableDevIssuer {

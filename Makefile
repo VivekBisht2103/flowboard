@@ -26,8 +26,8 @@ e2e: seed      ## Playwright against the running stack (start it first with `mak
 logs:
 	docker compose logs -f api worker webhook-sink
 
-cli:           ## e.g. make cli ARGS="board lst_sprint" AS=bob
-	docker compose exec -e FLOWBOARD_URL=http://localhost:8080 -e FLOWBOARD_USER=$(or $(AS),alice) api fbctl $(ARGS)
+cli:           ## e.g. make cli ARGS="board lst_sprint" AS=rahul
+	docker compose exec -e FLOWBOARD_URL=http://localhost:8080 -e FLOWBOARD_USER=$(or $(AS),priya) api fbctl $(ARGS)
 
 psql:
 	docker compose exec db psql -U flowboard flowboard
