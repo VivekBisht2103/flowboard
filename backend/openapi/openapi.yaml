@@ -7,7 +7,7 @@ info:
 
     **Conventions**
     - Versioning: URL prefix `/v1`. Additive changes stay in v1; breaking changes ship as `/v2` side by side.
-    - Auth: `X-User-Id: priya|rahul|ananya` (dev) or `Authorization: Bearer <JWT>` from `POST /v1/auth/token`.
+    - Auth: `X-User-Id: alice|bob|carol` (dev) or `Authorization: Bearer <JWT>` from `POST /v1/auth/token`.
       The caller's role is always loaded server-side; role claims and request bodies are never trusted.
     - Errors: always `{ "error": { "code", "message", "details?" } }`. Validation errors carry
       `details.fieldErrors[] = { path, code, message }` where `path` is a JSON path like `customFields.story_points`.
@@ -40,7 +40,7 @@ paths:
         required: true
         content:
           application/json:
-            schema: { type: object, required: [userId], properties: { userId: { type: string, example: rahul } } }
+            schema: { type: object, required: [userId], properties: { userId: { type: string, example: bob } } }
       responses:
         "200":
           description: Token
@@ -410,7 +410,7 @@ paths:
 
 components:
   securitySchemes:
-    userHeader: { type: apiKey, in: header, name: X-User-Id, description: "Mock identity: priya | rahul | ananya" }
+    userHeader: { type: apiKey, in: header, name: X-User-Id, description: "Mock identity: alice | bob | carol" }
     bearer: { type: http, scheme: bearer, bearerFormat: JWT }
 
   parameters:

@@ -34,7 +34,7 @@ var sorts = map[string]sortSpec{
 // ListQuery: GET /v1/lists/{id}/tasks
 //
 //	?limit=1..200 (50) &cursor=... &sort=position|dueDate|priority|createdAt|updatedAt|title
-//	&order=asc|desc &statusKey=a,b &assigneeId=rahul &q=text &cf.<fieldKey>=<value>
+//	&order=asc|desc &statusKey=a,b &assigneeId=bob &q=text &cf.<fieldKey>=<value>
 //
 // Pagination is keyset on (sortExpr, id); the cursor encodes the sort it was issued for.
 // Due dates sort with nulls last in both directions; priority asc = urgent first.

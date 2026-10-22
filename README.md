@@ -28,15 +28,15 @@ docker compose up --build
 
 | User  | Role   | Sees |
 |-------|--------|------|
-| priya | admin  | everything; can change statuses, fields, containers and grants |
-| rahul   | member | Engineering (Backlog, Sprint 12) + the private **Marketing** space (allow grant). Not Security Audit |
-| ananya | member | Sprint 12 + the private **Security Audit** list (allow grant). **Backlog** is explicitly denied |
+| alice | admin  | everything; can change statuses, fields, containers and grants |
+| bob   | member | Engineering (Backlog, Sprint 12) + the private **Marketing** space (allow grant). Not Security Audit |
+| carol | member | Sprint 12 + the private **Security Audit** list (allow grant). **Backlog** is explicitly denied |
 
 **Make targets** (all run in Docker): `make up`, `make test` (Go + frontend tests), `make e2e` (Playwright against
-the running stack, reseeds first), `make seed` (wipe + reseed), `make cli ARGS="board lst_sprint" AS=rahul`, `make logs`.
+the running stack, reseeds first), `make seed` (wipe + reseed), `make cli ARGS="board lst_sprint" AS=bob`, `make logs`.
 
 ### Demo path (what the video walks through)
-1. `docker compose up --build`, open http://localhost:3000 as Priya.
+1. `docker compose up --build`, open http://localhost:3000 as Alice.
 2. Sidebar: Engineering → Q2 Launch → **Backlog** shows *To Do · In Progress · In Review · Done*.
    **Sprint 12** (sibling list) shows *Ready · Blocked · In Progress · QA · Done*: it renames `todo`, hides the
    space's `in_review`, and adds `blocked` and `qa`.
@@ -44,7 +44,7 @@ the running stack, reseeds first), `make seed` (wipe + reseed), `make cli ARGS="
    at the bottom of the drawer fills in once the worker has processed the event.
 4. Click **Engineering** → *Statuses & fields*: the space's own `in_review` status and its two fields; workspace
    defaults are marked as inherited. On **Sprint 12**, try deleting **QA** — the app asks where the QA tasks should go.
-5. Switch “Acting as” to Rahul: *Security Audit* disappears and the config screens become read-only. Switch to Ananya:
+5. Switch “Acting as” to Bob: *Security Audit* disappears and the config screens become read-only. Switch to Carol:
    *Backlog* disappears, *Security Audit* appears.
 
 ---
@@ -111,10 +111,10 @@ sequenceDiagram
   participant DB as Postgres
   participant WK as worker
 
-  UI->>GW: GET /v1/lists/lst_sprint/board  (X-User-Id: rahul)
+  UI->>GW: GET /v1/lists/lst_sprint/board  (X-User-Id: bob)
   GW->>API: proxy
-  API->>DB: SELECT users WHERE id='rahul'   (auth boundary)
-  API->>DB: load tree + rahul's grants      (permission snapshot)
+  API->>DB: SELECT users WHERE id='bob'   (auth boundary)
+  API->>DB: load tree + bob's grants      (permission snapshot)
   Note over API: access.RequireList → 403 if not visible
   API->>DB: status_defs + field_defs for chain ws→space→folder→list
   Note over API: statuses.Resolve / fields.Resolve (pure)
@@ -336,10 +336,10 @@ undocumented, or documented but not served.
 
 ## 5. Auth
 
-- **Now (mock identity, real boundary):** `X-User-Id: priya|rahul|ananya` *or* `Authorization: Bearer <jwt>` where the
+- **Now (mock identity, real boundary):** `X-User-Id: alice|bob|carol` *or* `Authorization: Bearer <jwt>` where the
   JWT (`{userId, role, iat, exp}`, HS256, 15-minute TTL) comes from `POST /v1/auth/token`. If both are sent they must
   agree. The user is loaded from the `users` table on every request; the role claim is informational and never used
-  for decisions (`TestAuth_JWTRoundTripAndRoleClaimIsNotTrusted` signs a token claiming `admin` for Rahul and gets 403).
+  for decisions (`TestAuth_JWTRoundTripAndRoleClaimIsNotTrusted` signs a token claiming `admin` for Bob and gets 403).
   Missing/unknown/expired/tampered credentials → 401; authenticated but not allowed → 403.
 - **Production swap (OIDC):** replace `identity.Service.Authenticate` only.
   1. The SPA does Authorization Code + PKCE against the IdP (Okta/Auth0/Entra); the gateway or a small BFF keeps the
@@ -435,7 +435,7 @@ Locally: `cd backend && TEST_DATABASE_URL=postgres://…/flowboard_test go test 
 
 | Area | Named scenarios |
 |---|---|
-| Permissions | `TestPermissions_TreeHidesPrivateNodesForRahul`, `…PriyaSeesAll`, `…AnanyaDiffersFromRahul`, `…DeniedListReturns403OnTaskRead` (private list *and* explicit deny on a public list; unknown id → 404), `…MembersCannotChangeConfigButCanEditTasks`, `…GrantChangesTakeEffectImmediately` (deny on a folder beats an allow below) |
+| Permissions | `TestPermissions_TreeHidesPrivateNodesForBob`, `…AliceSeesAll`, `…CarolDiffersFromBob`, `…DeniedListReturns403OnTaskRead` (private list *and* explicit deny on a public list; unknown id → 404), `…MembersCannotChangeConfigButCanEditTasks`, `…GrantChangesTakeEffectImmediately` (deny on a folder beats an allow below) |
 | Auth | `TestAuth_MissingCredentialsIs401`, `…UnknownUserIs401`, `…JWTRoundTripAndRoleClaimIsNotTrusted` (forged role, tampered, expired, header/token mismatch) |
 | Status resolution | `TestStatusResolution_SiblingListsResolveDifferentColumnSets`, `…FolderOverrideFlowsToAllChildLists`; unit tests for override / hide / re-add / orphaned rows |
 | Status validation | `TestTask_CreateWithUnknownStatusIs400`, `TestTask_UpdateWithUnknownStatusIs400` |
@@ -446,8 +446,8 @@ Locally: `cd backend && TEST_DATABASE_URL=postgres://…/flowboard_test go test 
 | API contract | `TestOpenAPIMatchesRouter`, `TestAPI_CursorPaginationSortedByDueDateNullsLast`, `…PrioritySortAndCustomFieldFilter`, `…ErrorEnvelopeAndUnknownBodyFields` |
 | Async | `TestOutbox_WorkerBuildsActivityIdempotently`, `…RolledBackWriteEmitsNothing`, `…FailuresBackOffThenDeadLetterWithoutPartialWrites` |
 | Seed | `TestSeed_EveryListBoardIsConsistent` (every seeded task re-validates; 20+ tasks; no unmapped) |
-| Frontend (Vitest) | select list → expected kanban columns → open task → edit custom field → save (asserts the PATCH payload); server field error shown next to the field; Priya → Rahul hides the private list; optimistic `applyMove` |
-| E2E (Playwright) | sibling lists' columns differ; edit custom field persists across reload; drag card changes column and persists; Priya → Rahul → Ananya visibility |
+| Frontend (Vitest) | select list → expected kanban columns → open task → edit custom field → save (asserts the PATCH payload); server field error shown next to the field; Alice → Bob hides the private list; optimistic `applyMove` |
+| E2E (Playwright) | sibling lists' columns differ; edit custom field persists across reload; drag card changes column and persists; Alice → Bob → Carol visibility |
 
 ---
 

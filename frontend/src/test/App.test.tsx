@@ -44,7 +44,7 @@ describe("Flowboard UI", () => {
     await waitFor(() => expect(document.querySelector(".toast")).toHaveTextContent("Saved “Sprint item”"));
     const patch = fake.requests.find((r) => r.method === "PATCH" && r.path === "/tasks/t2");
     expect(patch?.body).toEqual({ version: 1, customFields: { story_points: 8 } });
-    expect(patch?.user).toBe("priya");
+    expect(patch?.user).toBe("alice");
     expect(fake.tasks.find((t) => t.id === "t2")?.customFields.story_points).toBe(8);
   });
 
@@ -61,16 +61,16 @@ describe("Flowboard UI", () => {
     expect(fake.tasks.find((t) => t.id === "t2")?.customFields.component).toBe("frontend");
   });
 
-  it("switching the acting user from Priya to Rahul hides the private list", async () => {
+  it("switching the acting user from Alice to Bob hides the private list", async () => {
     const user = userEvent.setup();
     render(<App />);
     const tree = await screen.findByRole("tree");
     await waitFor(() => expect(within(tree).getByText("Security Audit")).toBeInTheDocument());
 
-    await user.selectOptions(screen.getByLabelText("Acting as"), "rahul");
+    await user.selectOptions(screen.getByLabelText("Acting as"), "bob");
 
     await waitFor(() => expect(within(screen.getByRole("tree")).queryByText("Security Audit")).not.toBeInTheDocument());
     expect(within(screen.getByRole("tree")).getByText("Sprint 12")).toBeInTheDocument();
-    expect(fake.requests.at(-1)?.user).toBe("rahul");
+    expect(fake.requests.at(-1)?.user).toBe("bob");
   });
 });

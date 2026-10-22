@@ -28,7 +28,7 @@ function collectLists(n: TreeNode | null, out: { id: string; name: string }[] = 
 }
 
 export default function App() {
-  const [userId, setUserId] = useState(() => readStored(USER_KEY) ?? "priya");
+  const [userId, setUserId] = useState(() => readStored(USER_KEY) ?? "alice");
   const [me, setMe] = useState<User | null>(null);
   const [users, setUsers] = useState<User[]>([]);
   const [tree, setTree] = useState<TreeNode | null>(null);
@@ -95,7 +95,7 @@ export default function App() {
         <label className="acting-as">
           <span>Acting as</span>
           <select aria-label="Acting as" value={userId} onChange={(e) => setUserId(e.target.value)}>
-            {(users.length ? users : [{ id: "priya", name: "Priya Sharma" }, { id: "rahul", name: "Rahul Verma" }, { id: "ananya", name: "Ananya Iyer" }] as User[])
+            {(users.length ? users : [{ id: "alice", name: "Alice Admin" }, { id: "bob", name: "Bob Builder" }, { id: "carol", name: "Carol Chen" }] as User[])
               .map((u) => <option key={u.id} value={u.id}>{u.name}{u.role ? ` (${u.role})` : ""}</option>)}
           </select>
         </label>

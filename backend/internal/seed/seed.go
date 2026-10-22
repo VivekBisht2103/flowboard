@@ -71,9 +71,9 @@ func seed(ctx context.Context, tx *sql.Tx) error {
 
 	// --- users ---
 	for _, u := range [][4]string{
-		{"priya", "Priya Sharma", "priya.sharma@flowboard.dev", "admin"},
-		{"rahul", "Rahul Verma", "rahul.verma@flowboard.dev", "member"},
-		{"ananya", "Ananya Iyer", "ananya.iyer@flowboard.dev", "member"},
+		{"alice", "Alice Admin", "alice@flowboard.dev", "admin"},
+		{"bob", "Bob Builder", "bob@flowboard.dev", "member"},
+		{"carol", "Carol Chen", "carol@flowboard.dev", "member"},
 	} {
 		e.do(`INSERT INTO users (id, name, email, role) VALUES ($1,$2,$3,$4)`, u[0], u[1], u[2], u[3])
 	}
@@ -102,10 +102,10 @@ func seed(ctx context.Context, tx *sql.Tx) error {
 			n.id, WorkspaceID, n.typ, parent, n.name, n.vis, n.pos)
 	}
 
-	// --- grants: Rahul and Ananya differ ---
-	//   Rahul:   allowed into the private Marketing space.
-	//   Ananya: allowed into the private Security Audit list; denied the public Backlog.
-	e.do(`INSERT INTO grants (resource_id, user_id, mode) VALUES ($1,'rahul','allow'), ($2,'ananya','allow'), ($3,'ananya','deny')`,
+	// --- grants: Bob and Carol differ ---
+	//   Bob:   allowed into the private Marketing space.
+	//   Carol: allowed into the private Security Audit list; denied the public Backlog.
+	e.do(`INSERT INTO grants (resource_id, user_id, mode) VALUES ($1,'bob','allow'), ($2,'carol','allow'), ($3,'carol','deny')`,
 		SpaceMkt, ListSecurity, ListBacklog)
 
 	// --- statuses ---
@@ -183,35 +183,35 @@ func seed(ctx context.Context, tx *sql.Tx) error {
 	}
 	tasks := []tk{
 		// Backlog: todo, in_progress, in_review, done
-		{ListBacklog, "Design onboarding checklist", "todo", "high", []string{"priya"}, day(5), map[string]any{"component": "frontend", "story_points": 5, "labels": []string{"feature"}, "customer_facing": true}},
-		{ListBacklog, "Rate-limit public API", "todo", "urgent", []string{"rahul"}, day(2), map[string]any{"component": "backend", "story_points": 8, "labels": []string{"feature"}, "target_release": "2026-11-15"}},
-		{ListBacklog, "Migrate CI runners to ARM", "todo", "low", []string{"ananya"}, nil, map[string]any{"component": "infra", "story_points": 3, "labels": []string{"chore"}}},
-		{ListBacklog, "Fix flaky checkout test", "in_progress", "normal", []string{"rahul"}, day(1), map[string]any{"component": "frontend", "story_points": 2, "labels": []string{"bug", "tech_debt"}}},
-		{ListBacklog, "Add OpenTelemetry tracing", "in_progress", "high", []string{"priya", "rahul"}, day(9), map[string]any{"component": "backend", "story_points": 8, "target_release": "2026-11-30"}},
-		{ListBacklog, "Dark mode for settings", "in_review", "normal", []string{"ananya"}, day(3), map[string]any{"component": "frontend", "story_points": 3, "labels": []string{"feature"}, "customer_facing": true}},
-		{ListBacklog, "Upgrade Postgres to 16", "in_review", "high", []string{"priya"}, day(-1), map[string]any{"component": "infra", "story_points": 5}},
+		{ListBacklog, "Design onboarding checklist", "todo", "high", []string{"alice"}, day(5), map[string]any{"component": "frontend", "story_points": 5, "labels": []string{"feature"}, "customer_facing": true}},
+		{ListBacklog, "Rate-limit public API", "todo", "urgent", []string{"bob"}, day(2), map[string]any{"component": "backend", "story_points": 8, "labels": []string{"feature"}, "target_release": "2026-11-15"}},
+		{ListBacklog, "Migrate CI runners to ARM", "todo", "low", []string{"carol"}, nil, map[string]any{"component": "infra", "story_points": 3, "labels": []string{"chore"}}},
+		{ListBacklog, "Fix flaky checkout test", "in_progress", "normal", []string{"bob"}, day(1), map[string]any{"component": "frontend", "story_points": 2, "labels": []string{"bug", "tech_debt"}}},
+		{ListBacklog, "Add OpenTelemetry tracing", "in_progress", "high", []string{"alice", "bob"}, day(9), map[string]any{"component": "backend", "story_points": 8, "target_release": "2026-11-30"}},
+		{ListBacklog, "Dark mode for settings", "in_review", "normal", []string{"carol"}, day(3), map[string]any{"component": "frontend", "story_points": 3, "labels": []string{"feature"}, "customer_facing": true}},
+		{ListBacklog, "Upgrade Postgres to 16", "in_review", "high", []string{"alice"}, day(-1), map[string]any{"component": "infra", "story_points": 5}},
 		{ListBacklog, "Remove legacy feature flags", "done", "low", nil, day(-6), map[string]any{"component": "backend", "story_points": 1, "labels": []string{"tech_debt"}}},
-		{ListBacklog, "Write ADR for event outbox", "done", "none", []string{"priya"}, nil, map[string]any{"component": "backend"}},
+		{ListBacklog, "Write ADR for event outbox", "done", "none", []string{"alice"}, nil, map[string]any{"component": "backend"}},
 		// Sprint 12: todo(Ready), blocked, in_progress, qa, done  (no in_review here)
-		{ListSprint, "Billing page empty state", "todo", "normal", []string{"rahul"}, day(4), map[string]any{"component": "frontend", "story_points": 2, "customer_facing": true}},
-		{ListSprint, "Webhook retries with backoff", "todo", "high", []string{"ananya"}, day(6), map[string]any{"component": "backend", "story_points": 5, "target_release": "2026-11-15"}},
-		{ListSprint, "SSO for enterprise tenants", "blocked", "urgent", []string{"priya"}, day(2), map[string]any{"component": "backend", "story_points": 13, "customer_facing": true}},
-		{ListSprint, "Terraform state lock contention", "blocked", "normal", []string{"ananya"}, nil, map[string]any{"component": "infra", "story_points": 3}},
-		{ListSprint, "Kanban drag performance", "in_progress", "high", []string{"rahul", "ananya"}, day(1), map[string]any{"component": "frontend", "story_points": 5}},
-		{ListSprint, "Search indexer worker", "in_progress", "normal", []string{"priya"}, day(7), map[string]any{"component": "backend", "story_points": 8}},
-		{ListSprint, "Accessibility audit fixes", "qa", "normal", []string{"ananya"}, day(0), map[string]any{"component": "frontend", "story_points": 3, "customer_facing": true}},
-		{ListSprint, "Nightly backup verification", "qa", "low", []string{"rahul"}, day(3), map[string]any{"component": "infra", "story_points": 2}},
-		{ListSprint, "Release notes generator", "done", "none", []string{"priya"}, day(-2), map[string]any{"component": "backend", "story_points": 2}},
-		{ListSprint, "Fix timezone bug in due dates", "done", "urgent", []string{"rahul"}, day(-3), map[string]any{"component": "frontend", "story_points": 1}},
-		// Security Audit (private; Ananya + admins only)
-		{ListSecurity, "Rotate production DB credentials", "todo", "urgent", []string{"ananya"}, day(1), map[string]any{"component": "infra", "story_points": 3}},
-		{ListSecurity, "Pen-test findings triage", "in_progress", "high", []string{"ananya", "priya"}, day(4), map[string]any{"component": "backend"}},
-		{ListSecurity, "Enable MFA for admin console", "in_review", "high", []string{"priya"}, day(2), map[string]any{"component": "frontend", "customer_facing": true}},
-		// Content Calendar (Marketing; Rahul + admins only)
-		{ListContent, "Launch blog post", "todo", "high", []string{"rahul"}, day(8), map[string]any{"channel": "blog", "budget": 0, "brief": "Announce Flowboard 1.0"}},
-		{ListContent, "Twitter thread: kanban tips", "scheduled", "normal", []string{"rahul"}, day(3), map[string]any{"channel": "social", "budget": 150}},
-		{ListContent, "Customer newsletter (Nov)", "in_progress", "normal", []string{"priya"}, day(12), map[string]any{"channel": "email", "budget": 400}},
-		{ListContent, "Case study: Acme Robotics", "done", "low", []string{"rahul"}, day(-4), map[string]any{"channel": "blog", "budget": 1200}},
+		{ListSprint, "Billing page empty state", "todo", "normal", []string{"bob"}, day(4), map[string]any{"component": "frontend", "story_points": 2, "customer_facing": true}},
+		{ListSprint, "Webhook retries with backoff", "todo", "high", []string{"carol"}, day(6), map[string]any{"component": "backend", "story_points": 5, "target_release": "2026-11-15"}},
+		{ListSprint, "SSO for enterprise tenants", "blocked", "urgent", []string{"alice"}, day(2), map[string]any{"component": "backend", "story_points": 13, "customer_facing": true}},
+		{ListSprint, "Terraform state lock contention", "blocked", "normal", []string{"carol"}, nil, map[string]any{"component": "infra", "story_points": 3}},
+		{ListSprint, "Kanban drag performance", "in_progress", "high", []string{"bob", "carol"}, day(1), map[string]any{"component": "frontend", "story_points": 5}},
+		{ListSprint, "Search indexer worker", "in_progress", "normal", []string{"alice"}, day(7), map[string]any{"component": "backend", "story_points": 8}},
+		{ListSprint, "Accessibility audit fixes", "qa", "normal", []string{"carol"}, day(0), map[string]any{"component": "frontend", "story_points": 3, "customer_facing": true}},
+		{ListSprint, "Nightly backup verification", "qa", "low", []string{"bob"}, day(3), map[string]any{"component": "infra", "story_points": 2}},
+		{ListSprint, "Release notes generator", "done", "none", []string{"alice"}, day(-2), map[string]any{"component": "backend", "story_points": 2}},
+		{ListSprint, "Fix timezone bug in due dates", "done", "urgent", []string{"bob"}, day(-3), map[string]any{"component": "frontend", "story_points": 1}},
+		// Security Audit (private; Carol + admins only)
+		{ListSecurity, "Rotate production DB credentials", "todo", "urgent", []string{"carol"}, day(1), map[string]any{"component": "infra", "story_points": 3}},
+		{ListSecurity, "Pen-test findings triage", "in_progress", "high", []string{"carol", "alice"}, day(4), map[string]any{"component": "backend"}},
+		{ListSecurity, "Enable MFA for admin console", "in_review", "high", []string{"alice"}, day(2), map[string]any{"component": "frontend", "customer_facing": true}},
+		// Content Calendar (Marketing; Bob + admins only)
+		{ListContent, "Launch blog post", "todo", "high", []string{"bob"}, day(8), map[string]any{"channel": "blog", "budget": 0, "brief": "Announce Flowboard 1.0"}},
+		{ListContent, "Twitter thread: kanban tips", "scheduled", "normal", []string{"bob"}, day(3), map[string]any{"channel": "social", "budget": 150}},
+		{ListContent, "Customer newsletter (Nov)", "in_progress", "normal", []string{"alice"}, day(12), map[string]any{"channel": "email", "budget": 400}},
+		{ListContent, "Case study: Acme Robotics", "done", "low", []string{"bob"}, day(-4), map[string]any{"channel": "blog", "budget": 1200}},
 	}
 	colPos := map[string]float64{}
 	for i, t := range tasks {
@@ -224,7 +224,7 @@ func seed(ctx context.Context, tx *sql.Tx) error {
 		}
 		created := time.Now().UTC().Add(-time.Duration(len(tasks)-i) * time.Hour)
 		e.do(`INSERT INTO tasks (id, workspace_id, list_id, title, description, status_key, priority, assignee_ids, due_date, custom_fields, position, created_by, created_at, updated_at)
-			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'priya',$12,$12)`,
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'alice',$12,$12)`,
 			fmt.Sprintf("tsk_seed_%02d", i+1), WorkspaceID, t.list, t.title, "Seeded task for the Flowboard demo.",
 			t.status, t.prio, pq.Array(assignees), t.due, cf, colPos[key], created)
 	}

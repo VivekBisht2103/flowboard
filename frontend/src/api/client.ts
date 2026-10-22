@@ -19,7 +19,7 @@ export class ApiError extends Error {
 
 const BASE = (import.meta.env?.VITE_API_URL as string | undefined) ?? "";
 
-let currentUser = "priya";
+let currentUser = "alice";
 export function setApiUser(id: string) {
   currentUser = id;
 }
