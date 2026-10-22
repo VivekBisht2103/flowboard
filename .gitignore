@@ -4,3 +4,4 @@ frontend/dist/
 frontend/test-results/
 frontend/playwright-report/
 *.test
+*.tsbuildinfo
