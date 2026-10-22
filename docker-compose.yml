@@ -1,0 +1,109 @@
+# One command: docker compose up --build
+#   web          http://localhost:3000   React SPA + nginx gateway (/v1 -> api)
+#   api          http://localhost:8080   Go REST API (stateless; scale with --scale api=3 behind a LB)
+#   worker                               drains the outbox -> activity feed, webhooks, search-indexer stub
+#   webhook-sink                         demo third-party receiver (verifies HMAC signatures, logs events)
+#   seed                                 one-shot: migrations + demo data (idempotent)
+#   db           localhost:5432          Postgres 16
+name: flowboard
+
+# Every backend service runs the same image (one binary, different subcommands).
+x-backend-build: &backend-build
+  build: { context: ./backend, target: runtime }
+  image: flowboard-backend:local
+
+x-backend-env: &backend-env
+  DATABASE_URL: postgres://${POSTGRES_USER:-flowboard}:${POSTGRES_PASSWORD:-flowboard}@db:5432/${POSTGRES_DB:-flowboard}?sslmode=disable
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-flowboard}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-flowboard}
+      POSTGRES_DB: ${POSTGRES_DB:-flowboard}
+    ports: ["${DB_PORT:-5432}:5432"]
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./deploy/create-test-db.sql:/docker-entrypoint-initdb.d/10-create-test-db.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-flowboard} -d ${POSTGRES_DB:-flowboard}"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  seed:
+    <<: *backend-build
+    command: ["seed"]
+    environment: *backend-env
+    depends_on:
+      db: { condition: service_healthy }
+    restart: "no"
+
+  api:
+    <<: *backend-build
+    command: ["serve"]
+    environment:
+      <<: *backend-env
+      PORT: "8080"
+      JWT_SECRET: ${JWT_SECRET:-change-me-for-anything-but-local}
+      JWT_TTL: ${JWT_TTL:-15m}
+      AUTH_ALLOW_HEADER: ${AUTH_ALLOW_HEADER:-true}
+      AUTH_DEV_ISSUER: ${AUTH_DEV_ISSUER:-true}
+    ports: ["${API_PORT:-8080}:8080"]
+    depends_on:
+      seed: { condition: service_completed_successfully }
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/healthz"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  worker:
+    <<: *backend-build
+    command: ["worker"]
+    environment:
+      <<: *backend-env
+      WEBHOOK_URL: ${WEBHOOK_URL:-http://webhook-sink:9090/hooks}
+      WEBHOOK_SECRET: ${WEBHOOK_SECRET:-dev-webhook-secret}
+    depends_on:
+      seed: { condition: service_completed_successfully }
+      webhook-sink: { condition: service_started }
+
+  webhook-sink:
+    <<: *backend-build
+    command: ["webhook-sink"]
+    environment:
+      WEBHOOK_SECRET: ${WEBHOOK_SECRET:-dev-webhook-secret}
+    depends_on:
+      seed: { condition: service_completed_successfully }
+
+  web:
+    build: { context: ./frontend, target: runtime }
+    ports: ["${WEB_PORT:-3000}:80"]
+    depends_on:
+      api: { condition: service_healthy }
+
+  # ---- test profiles (not started by `up`) ----
+  api-test:
+    profiles: ["test"]
+    build: { context: ./backend, target: test }
+    environment:
+      TEST_DATABASE_URL: postgres://${POSTGRES_USER:-flowboard}:${POSTGRES_PASSWORD:-flowboard}@db:5432/flowboard_test?sslmode=disable
+    depends_on:
+      db: { condition: service_healthy }
+
+  web-test:
+    profiles: ["test"]
+    build: { context: ./frontend, target: test }
+
+  e2e:
+    profiles: ["e2e"]
+    build: { context: ./frontend, target: e2e }
+    environment:
+      BASE_URL: http://web
+    depends_on:
+      web: { condition: service_started }
+
+volumes:
+  pgdata:

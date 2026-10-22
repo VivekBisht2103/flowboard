@@ -1,0 +1,659 @@
+openapi: 3.1.0
+info:
+  title: Flowboard API
+  version: "1.0.0"
+  description: |
+    Versioned REST API for Flowboard. One contract serves every channel (web SPA, `fbctl` CLI, curl, webhooks).
+
+    **Conventions**
+    - Versioning: URL prefix `/v1`. Additive changes stay in v1; breaking changes ship as `/v2` side by side.
+    - Auth: `X-User-Id: alice|bob|carol` (dev) or `Authorization: Bearer <JWT>` from `POST /v1/auth/token`.
+      The caller's role is always loaded server-side; role claims and request bodies are never trusted.
+    - Errors: always `{ "error": { "code", "message", "details?" } }`. Validation errors carry
+      `details.fieldErrors[] = { path, code, message }` where `path` is a JSON path like `customFields.story_points`.
+    - Pagination: list endpoints return `{ data: [], page: { nextCursor, limit } }`. Pass `cursor` back unchanged;
+      cursors are bound to the sort they were issued for.
+    - Status codes: 400 validation, 401 unauthenticated, 403 forbidden, 404 unknown id, 409 conflict with current
+      state (in use, version mismatch), 422 config change would leave a list with an invalid status set.
+servers:
+  - url: http://localhost:8080
+security:
+  - userHeader: []
+  - bearer: []
+
+tags:
+  - name: identity
+  - name: hierarchy
+  - name: permissions
+  - name: statuses
+  - name: fields
+  - name: tasks
+  - name: activity
+
+paths:
+  /v1/auth/token:
+    post:
+      tags: [identity]
+      summary: Issue a short-lived JWT (dev issuer; replaced by OIDC in production)
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [userId], properties: { userId: { type: string, example: bob } } }
+      responses:
+        "200":
+          description: Token
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token: { type: string }
+                  tokenType: { type: string, example: Bearer }
+                  expiresAt: { type: string, format: date-time }
+                  user: { $ref: "#/components/schemas/User" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+
+  /v1/me:
+    get:
+      tags: [identity]
+      summary: The authenticated caller
+      responses:
+        "200": { description: Caller, content: { application/json: { schema: { $ref: "#/components/schemas/User" } } } }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+
+  /v1/users:
+    get:
+      tags: [identity]
+      summary: Workspace members (for assignee pickers)
+      responses:
+        "200":
+          description: Users
+          content: { application/json: { schema: { type: object, properties: { data: { type: array, items: { $ref: "#/components/schemas/User" } } } } } }
+
+  /v1/tree:
+    get:
+      tags: [hierarchy]
+      summary: Hierarchy visible to the caller (private / denied nodes are omitted)
+      responses:
+        "200": { description: Root workspace node, content: { application/json: { schema: { $ref: "#/components/schemas/TreeNode" } } } }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+
+  /v1/containers:
+    post:
+      tags: [hierarchy]
+      summary: Create a space, folder or list (admin)
+      description: "Parent type rules: space under workspace, folder under space, list under folder."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [parentId, type, name]
+              properties:
+                parentId: { type: string }
+                type: { type: string, enum: [space, folder, list] }
+                name: { type: string, maxLength: 200 }
+                visibility: { type: string, enum: [public, private], default: public }
+      responses:
+        "201": { description: Created, content: { application/json: { schema: { $ref: "#/components/schemas/Container" } } } }
+        "400": { $ref: "#/components/responses/Invalid" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /v1/containers/{id}:
+    parameters: [{ $ref: "#/components/parameters/id" }]
+    get:
+      tags: [hierarchy]
+      summary: Container with breadcrumbs
+      responses:
+        "200": { description: Container, content: { application/json: { schema: { $ref: "#/components/schemas/Container" } } } }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    patch:
+      tags: [hierarchy]
+      summary: Rename / change visibility (admin)
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object, properties: { name: { type: string }, visibility: { type: string, enum: [public, private] } } }
+      responses:
+        "200": { description: Updated, content: { application/json: { schema: { $ref: "#/components/schemas/Container" } } } }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    delete:
+      tags: [hierarchy]
+      summary: Archive (soft-delete) the container and its subtree (admin)
+      responses:
+        "204": { description: Archived }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /v1/containers/{id}/children:
+    parameters: [{ $ref: "#/components/parameters/id" }, { $ref: "#/components/parameters/limit" }, { $ref: "#/components/parameters/cursor" }]
+    get:
+      tags: [hierarchy]
+      summary: Visible children, ordered by position (cursor-paginated)
+      responses:
+        "200": { description: Page, content: { application/json: { schema: { $ref: "#/components/schemas/ContainerPage" } } } }
+
+  /v1/containers/{id}/move:
+    parameters: [{ $ref: "#/components/parameters/id" }]
+    post:
+      tags: [hierarchy]
+      summary: Reorder among siblings (admin)
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object, properties: { beforeId: { type: string }, afterId: { type: string } } }
+      responses:
+        "200": { description: Moved, content: { application/json: { schema: { $ref: "#/components/schemas/Container" } } } }
+
+  /v1/containers/{id}/grants:
+    parameters: [{ $ref: "#/components/parameters/id" }]
+    get:
+      tags: [permissions]
+      summary: Grants on a container (admin)
+      responses:
+        "200": { description: Grants, content: { application/json: { schema: { type: object, properties: { data: { type: array, items: { $ref: "#/components/schemas/Grant" } } } } } } }
+
+  /v1/containers/{id}/grants/{userId}:
+    parameters:
+      - { $ref: "#/components/parameters/id" }
+      - { name: userId, in: path, required: true, schema: { type: string } }
+    put:
+      tags: [permissions]
+      summary: Upsert an allow/deny grant (admin)
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, required: [mode], properties: { mode: { type: string, enum: [allow, deny] } } } } }
+      responses:
+        "200": { description: Grant, content: { application/json: { schema: { $ref: "#/components/schemas/Grant" } } } }
+    delete:
+      tags: [permissions]
+      summary: Remove a grant (admin)
+      responses:
+        "204": { description: Removed }
+
+  /v1/containers/{id}/statuses:
+    parameters: [{ $ref: "#/components/parameters/id" }]
+    get:
+      tags: [statuses]
+      summary: Local definitions, inherited set and resolved set at this container
+      responses:
+        "200": { description: View, content: { application/json: { schema: { $ref: "#/components/schemas/StatusView" } } } }
+    post:
+      tags: [statuses]
+      summary: Add a status, or an override of an inherited key (admin)
+      description: New keys need name, category and color. Existing (inherited) keys accept any subset as an override.
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/StatusInput" } } }
+      responses:
+        "201": { description: Created, content: { application/json: { schema: { $ref: "#/components/schemas/StatusMutation" } } } }
+        "400": { $ref: "#/components/responses/Invalid" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/StatusSetInvalid" }
+
+  /v1/containers/{id}/statuses/order:
+    parameters: [{ $ref: "#/components/parameters/id" }]
+    put:
+      tags: [statuses]
+      summary: Set column order at this container (permutation of resolved keys)
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, required: [keys], properties: { keys: { type: array, items: { type: string } } } } } }
+      responses:
+        "200": { description: Updated view, content: { application/json: { schema: { $ref: "#/components/schemas/StatusView" } } } }
+
+  /v1/containers/{id}/statuses/{key}:
+    parameters:
+      - { $ref: "#/components/parameters/id" }
+      - { name: key, in: path, required: true, schema: { type: string } }
+      - { $ref: "#/components/parameters/remapTo" }
+    patch:
+      tags: [statuses]
+      summary: Edit a local status or override/hide an inherited one at this level (admin)
+      requestBody:
+        content: { application/json: { schema: { $ref: "#/components/schemas/StatusInput" } } }
+      responses:
+        "200": { description: Updated, content: { application/json: { schema: { $ref: "#/components/schemas/StatusMutation" } } } }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/StatusSetInvalid" }
+    delete:
+      tags: [statuses]
+      summary: Delete a local status, or revert an override/hide (admin)
+      description: Fails with 409 STATUS_IN_USE while tasks would be orphaned, unless `remapTo` names a status valid in every affected list.
+      responses:
+        "200": { description: Deleted, content: { application/json: { schema: { type: object, properties: { effects: { $ref: "#/components/schemas/StatusEffects" } } } } } }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/StatusSetInvalid" }
+
+  /v1/containers/{id}/fields:
+    parameters: [{ $ref: "#/components/parameters/id" }]
+    get:
+      tags: [fields]
+      summary: Local, inherited and resolved custom-field schema at this container
+      responses:
+        "200": { description: View, content: { application/json: { schema: { $ref: "#/components/schemas/FieldView" } } } }
+    post:
+      tags: [fields]
+      summary: Define a custom field on a space, folder or list (admin)
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/FieldInput" } } }
+      responses:
+        "201": { description: Created, content: { application/json: { schema: { $ref: "#/components/schemas/FieldMutation" } } } }
+        "400": { $ref: "#/components/responses/Invalid" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /v1/containers/{id}/fields/{fieldId}:
+    parameters:
+      - { $ref: "#/components/parameters/id" }
+      - { name: fieldId, in: path, required: true, description: field id or key, schema: { type: string } }
+    patch:
+      tags: [fields]
+      summary: Edit name / required / options / position (key and type are immutable)
+      requestBody:
+        content: { application/json: { schema: { $ref: "#/components/schemas/FieldInput" } } }
+      responses:
+        "200": { description: Updated, content: { application/json: { schema: { $ref: "#/components/schemas/FieldMutation" } } } }
+        "409": { $ref: "#/components/responses/Conflict" }
+    delete:
+      tags: [fields]
+      summary: Archive the field and strip its values from every task in scope
+      responses:
+        "200": { description: Deleted, content: { application/json: { schema: { type: object, properties: { effects: { $ref: "#/components/schemas/FieldEffects" } } } } } }
+
+  /v1/lists/{id}/resolved-statuses:
+    parameters: [{ $ref: "#/components/parameters/id" }]
+    get:
+      tags: [statuses]
+      summary: Resolved status set for a list (kanban columns; used by validators)
+      responses:
+        "200":
+          description: Statuses in column order
+          content: { application/json: { schema: { type: object, properties: { listId: { type: string }, data: { type: array, items: { $ref: "#/components/schemas/Status" } } } } } }
+
+  /v1/lists/{id}/resolved-fields:
+    parameters: [{ $ref: "#/components/parameters/id" }]
+    get:
+      tags: [fields]
+      summary: Resolved custom-field schema for a list
+      responses:
+        "200":
+          description: Schema
+          content: { application/json: { schema: { type: object, properties: { listId: { type: string }, data: { type: array, items: { $ref: "#/components/schemas/FieldDef" } } } } } }
+
+  /v1/lists/{id}/board:
+    parameters:
+      - { $ref: "#/components/parameters/id" }
+      - { name: assigneeId, in: query, schema: { type: string } }
+      - { name: q, in: query, schema: { type: string }, description: title contains }
+      - { $ref: "#/components/parameters/cf" }
+    get:
+      tags: [tasks]
+      summary: Board aggregate — resolved statuses, field schema and tasks grouped by column (one round trip)
+      responses:
+        "200": { description: Board, content: { application/json: { schema: { $ref: "#/components/schemas/Board" } } } }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /v1/lists/{id}/tasks:
+    parameters: [{ $ref: "#/components/parameters/id" }]
+    get:
+      tags: [tasks]
+      summary: List tasks (keyset pagination, sort, filters)
+      parameters:
+        - { $ref: "#/components/parameters/limit" }
+        - { $ref: "#/components/parameters/cursor" }
+        - { name: sort, in: query, schema: { type: string, enum: [position, dueDate, priority, createdAt, updatedAt, title], default: position } }
+        - { name: order, in: query, schema: { type: string, enum: [asc, desc], default: asc } }
+        - { name: statusKey, in: query, schema: { type: string }, description: comma-separated keys }
+        - { name: assigneeId, in: query, schema: { type: string } }
+        - { name: q, in: query, schema: { type: string } }
+        - { $ref: "#/components/parameters/cf" }
+      responses:
+        "200": { description: Page, content: { application/json: { schema: { $ref: "#/components/schemas/TaskPage" } } } }
+        "400": { $ref: "#/components/responses/Invalid" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      tags: [tasks]
+      summary: Create a task (statusKey defaults to the first not_started status)
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/TaskCreate" } } }
+      responses:
+        "201": { description: Created, content: { application/json: { schema: { $ref: "#/components/schemas/Task" } } } }
+        "400": { $ref: "#/components/responses/Invalid" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /v1/lists/{id}/activity:
+    parameters: [{ $ref: "#/components/parameters/id" }, { $ref: "#/components/parameters/limit" }, { $ref: "#/components/parameters/cursor" }]
+    get:
+      tags: [activity]
+      summary: List activity feed (eventually consistent, newest first)
+      responses:
+        "200": { description: Page, content: { application/json: { schema: { $ref: "#/components/schemas/ActivityPage" } } } }
+
+  /v1/tasks/{id}:
+    parameters: [{ $ref: "#/components/parameters/id" }]
+    get:
+      tags: [tasks]
+      summary: Get a task
+      responses:
+        "200": { description: Task, content: { application/json: { schema: { $ref: "#/components/schemas/Task" } } } }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    patch:
+      tags: [tasks]
+      summary: Update fields, status or custom-field values (merge patch; null clears)
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/TaskUpdate" } } }
+      responses:
+        "200": { description: Task, content: { application/json: { schema: { $ref: "#/components/schemas/Task" } } } }
+        "400": { $ref: "#/components/responses/Invalid" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/Conflict" }
+    delete:
+      tags: [tasks]
+      summary: Soft-delete a task
+      responses:
+        "204": { description: Deleted }
+
+  /v1/tasks/{id}/move:
+    parameters: [{ $ref: "#/components/parameters/id" }]
+    post:
+      tags: [tasks]
+      summary: Move between lists / columns / positions ("drag card")
+      description: |
+        Re-validates against the destination list. If the current status does not resolve there:
+        explicit `statusKey` wins; else `statusPolicy=map_to_default` (default) picks the first destination status
+        with the same category, then the first not_started; `statusPolicy=reject` returns 409 STATUS_NOT_IN_TARGET.
+        Custom-field values not in the destination schema are stripped (`effects.strippedFields`); required
+        destination fields must be present or supplied in `customFields`.
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/TaskMove" } } }
+      responses:
+        "200":
+          description: Moved
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  task: { $ref: "#/components/schemas/Task" }
+                  effects:
+                    type: object
+                    properties:
+                      statusMapped: { oneOf: [{ type: "null" }, { type: object, properties: { from: { type: string }, to: { type: string } } }] }
+                      strippedFields: { type: array, items: { type: string } }
+        "400": { $ref: "#/components/responses/Invalid" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /v1/tasks/{id}/activity:
+    parameters: [{ $ref: "#/components/parameters/id" }, { $ref: "#/components/parameters/limit" }, { $ref: "#/components/parameters/cursor" }]
+    get:
+      tags: [activity]
+      summary: Task activity feed
+      responses:
+        "200": { description: Page, content: { application/json: { schema: { $ref: "#/components/schemas/ActivityPage" } } } }
+
+  /v1/openapi.yaml:
+    get:
+      summary: This document
+      security: []
+      responses:
+        "200": { description: OpenAPI YAML }
+
+components:
+  securitySchemes:
+    userHeader: { type: apiKey, in: header, name: X-User-Id, description: "Mock identity: alice | bob | carol" }
+    bearer: { type: http, scheme: bearer, bearerFormat: JWT }
+
+  parameters:
+    id: { name: id, in: path, required: true, schema: { type: string } }
+    limit: { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 200, default: 50 } }
+    cursor: { name: cursor, in: query, schema: { type: string }, description: Opaque cursor from page.nextCursor }
+    remapTo: { name: remapTo, in: query, schema: { type: string }, description: Status key that orphaned tasks move to }
+    cf:
+      name: cf
+      in: query
+      style: deepObject
+      explode: true
+      description: "Custom-field filter, e.g. `cf.component=backend`, `cf.labels=bug`, `cf.customer_facing=true`. Equality for select/number/date/checkbox (GIN containment), contains for text."
+      schema: { type: object, additionalProperties: { type: string } }
+
+  responses:
+    Unauthenticated: { description: Missing or invalid credentials, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+    Forbidden: { description: Authenticated but not allowed, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+    NotFound: { description: Unknown id, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+    Invalid: { description: VALIDATION_FAILED with fieldErrors, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+    Conflict:
+      description: "Conflicts with current state: STATUS_IN_USE, STATUS_NOT_IN_TARGET, STATUS_EXISTS, FIELD_KEY_CONFLICT, OPTION_IN_USE, FIELD_REQUIRED_BACKFILL, VERSION_CONFLICT"
+      content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+    StatusSetInvalid: { description: "STATUS_SET_INVALID: a list would lose its not_started/active/done status", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code: { type: string, example: VALIDATION_FAILED }
+            message: { type: string }
+            details:
+              type: object
+              properties:
+                fieldErrors:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      path: { type: string, example: customFields.story_points }
+                      code: { type: string, example: INVALID_TYPE }
+                      message: { type: string }
+              additionalProperties: true
+    PageInfo:
+      type: object
+      properties: { nextCursor: { type: [string, "null"] }, limit: { type: integer } }
+    User:
+      type: object
+      properties: { id: { type: string }, name: { type: string }, email: { type: string }, role: { type: string, enum: [admin, member] } }
+    Container:
+      type: object
+      properties:
+        id: { type: string }
+        workspaceId: { type: string }
+        type: { type: string, enum: [workspace, space, folder, list] }
+        parentId: { type: [string, "null"] }
+        name: { type: string }
+        position: { type: number }
+        visibility: { type: string, enum: [public, private] }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    TreeNode:
+      allOf:
+        - { $ref: "#/components/schemas/Container" }
+        - { type: object, properties: { children: { type: array, items: { $ref: "#/components/schemas/TreeNode" } } } }
+    ContainerPage:
+      type: object
+      properties: { data: { type: array, items: { $ref: "#/components/schemas/Container" } }, page: { $ref: "#/components/schemas/PageInfo" } }
+    Grant:
+      type: object
+      properties: { resourceId: { type: string }, userId: { type: string }, mode: { type: string, enum: [allow, deny] } }
+    Status:
+      type: object
+      properties:
+        id: { type: string }
+        key: { type: string }
+        name: { type: string }
+        category: { type: string, enum: [not_started, active, done, closed] }
+        color: { type: string }
+        position: { type: number }
+        ownerType: { type: string }
+        ownerId: { type: string }
+        overriddenAt: { type: string }
+        inherited: { type: boolean }
+    StatusDef:
+      type: object
+      properties:
+        id: { type: string }
+        ownerId: { type: string }
+        key: { type: string }
+        name: { type: [string, "null"] }
+        category: { type: [string, "null"] }
+        color: { type: [string, "null"] }
+        position: { type: [number, "null"] }
+        hidden: { type: boolean }
+    StatusInput:
+      type: object
+      properties:
+        key: { type: string, pattern: "^[a-z][a-z0-9_]{1,39}$" }
+        name: { type: string }
+        category: { type: string, enum: [not_started, active, done, closed] }
+        color: { type: string, pattern: "^#[0-9a-fA-F]{6}$" }
+        position: { type: number }
+        hidden: { type: boolean }
+        remapTo: { type: string }
+    StatusEffects:
+      type: object
+      properties:
+        remapped:
+          type: array
+          items: { type: object, properties: { listId: { type: string }, from: { type: string }, to: { type: string }, taskCount: { type: integer } } }
+    StatusMutation:
+      type: object
+      properties: { status: { $ref: "#/components/schemas/StatusDef" }, effects: { $ref: "#/components/schemas/StatusEffects" } }
+    StatusView:
+      type: object
+      properties:
+        containerId: { type: string }
+        containerType: { type: string }
+        local: { type: array, items: { $ref: "#/components/schemas/StatusDef" } }
+        inherited: { type: array, items: { $ref: "#/components/schemas/Status" } }
+        resolved: { type: array, items: { $ref: "#/components/schemas/Status" } }
+    FieldOption:
+      type: object
+      properties: { id: { type: string }, label: { type: string }, color: { type: string } }
+    FieldDef:
+      type: object
+      properties:
+        id: { type: string }
+        ownerId: { type: string }
+        ownerType: { type: string }
+        key: { type: string }
+        name: { type: string }
+        type: { type: string, enum: [text, number, single_select, multi_select, date, checkbox] }
+        required: { type: boolean }
+        options: { type: array, items: { $ref: "#/components/schemas/FieldOption" } }
+        position: { type: number }
+        inherited: { type: boolean }
+    FieldInput:
+      type: object
+      properties:
+        key: { type: string }
+        name: { type: string }
+        type: { type: string, enum: [text, number, single_select, multi_select, date, checkbox] }
+        required: { type: boolean }
+        options: { type: array, items: { $ref: "#/components/schemas/FieldOption" } }
+        position: { type: number }
+        defaultValue: { description: Backfill value for existing tasks when the field becomes required }
+    FieldEffects:
+      type: object
+      properties: { backfilledTasks: { type: integer }, strippedTasks: { type: integer } }
+    FieldMutation:
+      type: object
+      properties: { field: { $ref: "#/components/schemas/FieldDef" }, effects: { $ref: "#/components/schemas/FieldEffects" } }
+    FieldView:
+      type: object
+      properties:
+        containerId: { type: string }
+        containerType: { type: string }
+        local: { type: array, items: { $ref: "#/components/schemas/FieldDef" } }
+        inherited: { type: array, items: { $ref: "#/components/schemas/FieldDef" } }
+        resolved: { type: array, items: { $ref: "#/components/schemas/FieldDef" } }
+    CustomFieldValues:
+      type: object
+      description: "fieldKey -> value. text: string, number: number, single_select: option id, multi_select: option id[], date: YYYY-MM-DD, checkbox: boolean. null clears."
+      additionalProperties: true
+    Task:
+      type: object
+      properties:
+        id: { type: string }
+        listId: { type: string }
+        title: { type: string, maxLength: 500 }
+        description: { type: string }
+        statusKey: { type: string }
+        priority: { type: string, enum: [urgent, high, normal, low, none] }
+        assigneeIds: { type: array, items: { type: string } }
+        dueDate: { type: [string, "null"], format: date-time }
+        customFields: { $ref: "#/components/schemas/CustomFieldValues" }
+        position: { type: number }
+        version: { type: integer }
+        createdBy: { type: [string, "null"] }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    TaskCreate:
+      type: object
+      required: [title]
+      properties:
+        title: { type: string, maxLength: 500 }
+        description: { type: string }
+        statusKey: { type: string }
+        priority: { type: string, enum: [urgent, high, normal, low, none] }
+        assigneeIds: { type: array, items: { type: string } }
+        dueDate: { type: [string, "null"] }
+        customFields: { $ref: "#/components/schemas/CustomFieldValues" }
+    TaskUpdate:
+      allOf:
+        - { $ref: "#/components/schemas/TaskCreate" }
+        - { type: object, properties: { version: { type: integer, description: "Optimistic concurrency: 409 VERSION_CONFLICT if stale" } } }
+    TaskMove:
+      type: object
+      properties:
+        listId: { type: string }
+        statusKey: { type: string }
+        beforeTaskId: { type: string }
+        afterTaskId: { type: string }
+        statusPolicy: { type: string, enum: [map_to_default, reject], default: map_to_default }
+        customFields: { $ref: "#/components/schemas/CustomFieldValues" }
+        version: { type: integer }
+    TaskPage:
+      type: object
+      properties: { data: { type: array, items: { $ref: "#/components/schemas/Task" } }, page: { $ref: "#/components/schemas/PageInfo" } }
+    Column:
+      type: object
+      properties:
+        status: { $ref: "#/components/schemas/Status" }
+        tasks: { type: array, items: { $ref: "#/components/schemas/Task" } }
+        count: { type: integer }
+    Board:
+      type: object
+      properties:
+        listId: { type: string }
+        statuses: { type: array, items: { $ref: "#/components/schemas/Status" } }
+        fields: { type: array, items: { $ref: "#/components/schemas/FieldDef" } }
+        columns: { type: array, items: { $ref: "#/components/schemas/Column" } }
+        unmapped: { type: integer, description: Tasks outside the resolved set (kept at 0 by config safety) }
+        truncated: { type: boolean }
+    Activity:
+      type: object
+      properties:
+        id: { type: integer }
+        eventId: { type: string }
+        type: { type: string }
+        taskId: { type: [string, "null"] }
+        listId: { type: [string, "null"] }
+        actorId: { type: [string, "null"] }
+        summary: { type: string }
+        payload: { type: object }
+        createdAt: { type: string, format: date-time }
+    ActivityPage:
+      type: object
+      properties: { data: { type: array, items: { $ref: "#/components/schemas/Activity" } }, page: { $ref: "#/components/schemas/PageInfo" } }
