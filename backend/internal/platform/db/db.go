@@ -23,7 +23,21 @@ type Q interface {
 }
 
 // Open connects and waits (bounded) for the database to accept connections.
+// If the URL names no sslmode, TLS is tried first (lib/pq's default) and, when
+// the server has TLS off (e.g. a private network), it falls back to sslmode=disable.
 func Open(ctx context.Context, url string) (*sql.DB, error) {
+	d, err := open(ctx, url)
+	if err != nil && !strings.Contains(url, "sslmode=") && strings.Contains(err.Error(), "SSL is not enabled") {
+		sep := "?"
+		if strings.Contains(url, "?") {
+			sep = "&"
+		}
+		return open(ctx, url+sep+"sslmode=disable")
+	}
+	return d, err
+}
+
+func open(ctx context.Context, url string) (*sql.DB, error) {
 	d, err := sql.Open("postgres", url)
 	if err != nil {
 		return nil, err
@@ -36,6 +50,10 @@ func Open(ctx context.Context, url string) (*sql.DB, error) {
 		err = d.PingContext(ctx)
 		if err == nil {
 			return d, nil
+		}
+		if strings.Contains(err.Error(), "SSL is not enabled") {
+			d.Close()
+			return nil, err
 		}
 		if time.Now().After(deadline) {
 			return nil, fmt.Errorf("database not reachable: %w", err)

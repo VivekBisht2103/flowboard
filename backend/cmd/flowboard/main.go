@@ -4,6 +4,9 @@
 //	flowboard worker   drain the event outbox (activity feed, webhooks, indexer stub)
 //	flowboard migrate  apply schema migrations
 //	flowboard seed     apply migrations and seed demo data (idempotent; --reset to wipe)
+//
+//	serve options: MIGRATE_ON_START, SEED_ON_START, RUN_WORKER (in-process worker),
+//	STATIC_DIR (serve the built SPA), DEMO_RESET_EVERY (e.g. 2h: periodic demo reset)
 //	flowboard webhook-sink  demo receiver for outbound webhooks (verifies signatures)
 package main
 
@@ -11,6 +14,7 @@ import (
 	"context"
 	"crypto/hmac"
 	"crypto/sha256"
+	"database/sql"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -75,8 +79,19 @@ func main() {
 		reset := len(os.Args) > 2 && os.Args[2] == "--reset"
 		must(seed.Run(ctx, d, reset))
 	case "serve":
-		if envBool("MIGRATE_ON_START", false) {
+		if envBool("MIGRATE_ON_START", false) || envBool("SEED_ON_START", false) {
 			must(db.Migrate(ctx, d))
+		}
+		if envBool("SEED_ON_START", false) {
+			must(seed.Run(ctx, d, false)) // idempotent: only seeds an empty database
+		}
+		// Single-container mode (e.g. a free hosting tier): run the outbox worker in-process.
+		if envBool("RUN_WORKER", false) {
+			go func() { must(newWorker(d).Run(ctx)) }()
+		}
+		// Shared demo: wipe and re-seed on a timer so testers can't break it for each other.
+		if every, err := time.ParseDuration(os.Getenv("DEMO_RESET_EVERY")); err == nil && every > 0 {
+			go resetLoop(ctx, d, every)
 		}
 		ttl, _ := time.ParseDuration(env("JWT_TTL", "15m"))
 		a := app.New(d, identity.Config{
@@ -85,7 +100,11 @@ func main() {
 			AllowHeaderAuth: envBool("AUTH_ALLOW_HEADER", true),
 			EnableDevIssuer: envBool("AUTH_DEV_ISSUER", true),
 		})
-		srv := &http.Server{Addr: ":" + env("PORT", "8080"), Handler: a.Router(), ReadHeaderTimeout: 5 * time.Second}
+		handler := a.Router()
+		if dir := os.Getenv("STATIC_DIR"); dir != "" { // serve the built SPA from the same origin
+			handler = app.WithSPA(handler, dir)
+		}
+		srv := &http.Server{Addr: ":" + env("PORT", "8080"), Handler: handler, ReadHeaderTimeout: 5 * time.Second}
 		go func() {
 			<-ctx.Done()
 			sctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -97,15 +116,35 @@ func main() {
 			must(err)
 		}
 	case "worker":
-		w := &events.Worker{DB: d, Consumers: []events.Consumer{
-			events.ActivityProjector{},
-			events.SearchIndexer{},
-			events.Webhook{URL: os.Getenv("WEBHOOK_URL"), Secret: []byte(env("WEBHOOK_SECRET", "dev-webhook-secret"))},
-		}}
-		must(w.Run(ctx))
+		must(newWorker(d).Run(ctx))
 	default:
 		fmt.Fprintln(os.Stderr, "unknown command", os.Args[1])
 		os.Exit(2)
+	}
+}
+
+func newWorker(d *sql.DB) *events.Worker {
+	return &events.Worker{DB: d, Consumers: []events.Consumer{
+		events.ActivityProjector{},
+		events.SearchIndexer{},
+		events.Webhook{URL: os.Getenv("WEBHOOK_URL"), Secret: []byte(env("WEBHOOK_SECRET", "dev-webhook-secret"))},
+	}}
+}
+
+func resetLoop(ctx context.Context, d *sql.DB, every time.Duration) {
+	t := time.NewTicker(every)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+			if err := seed.Run(ctx, d, true); err != nil {
+				slog.Error("demo reset failed", "err", err)
+			} else {
+				slog.Info("demo data reset")
+			}
+		}
 	}
 }
 

@@ -35,6 +35,29 @@ docker compose up --build
 **Make targets** (all run in Docker): `make up`, `make test` (Go + frontend tests), `make e2e` (Playwright against
 the running stack, reseeds first), `make seed` (wipe + reseed), `make cli ARGS="board lst_sprint" AS=bob`, `make logs`.
 
+### Hosted demo (no install)
+
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/VivekBisht2103/flowboard)
+
+The root [`Dockerfile`](Dockerfile) builds a single container in which one Go process serves the React app, the
+`/v1` API and the outbox worker; [`render.yaml`](render.yaml) pairs it with a free Postgres. The same image runs on
+any Docker host:
+
+```bash
+docker build -t flowboard . && docker run -p 8080:8080 -e DATABASE_URL=postgres://… flowboard
+```
+
+| Env var | Effect in the single container |
+|---|---|
+| `SEED_ON_START=true` | Run migrations and seed an empty database on boot |
+| `RUN_WORKER=true` | Run the outbox worker in-process (activity feed, webhooks) |
+| `STATIC_DIR=/app/web` | Serve the built SPA on the same origin as the API |
+| `DEMO_RESET_EVERY=6h` | Wipe and re-seed on a timer, so testers can't break the demo for each other |
+
+The hosted demo keeps the mock identity on (anyone can pick Alice, Bob or Carol), which suits a shared demo
+but not real data. Free-tier caveats: the service sleeps after ~15 minutes idle, so the first request takes about
+a minute; the free database expires after 30 days.
+
 ### Demo path (what the video walks through)
 1. `docker compose up --build`, open http://localhost:3000 as Alice.
 2. Sidebar: Engineering → Q2 Launch → **Backlog** shows *To Do · In Progress · In Review · Done*.

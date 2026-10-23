@@ -1,0 +1,34 @@
+# Render Blueprint: one-click hosted demo.
+# Deploy: https://render.com/deploy?repo=https://github.com/VivekBisht2103/flowboard
+#
+# Creates a free Postgres database and one free Docker web service that serves the
+# React app, the /v1 API and the background worker from the root Dockerfile.
+# Free-tier notes: the service sleeps after ~15 min idle (first request then takes
+# ~1 min to wake), and a free database expires after 30 days.
+
+databases:
+  - name: flowboard-db
+    plan: free
+    databaseName: flowboard
+    user: flowboard
+
+services:
+  - type: web
+    name: flowboard
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /healthz
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: flowboard-db
+          property: connectionString
+      - key: JWT_SECRET
+        generateValue: true
+      - key: DEMO_RESET_EVERY      # shared demo: wipe and re-seed every 6 hours
+        value: 6h
+      - key: AUTH_ALLOW_HEADER     # mock identity (X-User-Id) stays on for the demo
+        value: "true"
+      - key: AUTH_DEV_ISSUER
+        value: "true"
