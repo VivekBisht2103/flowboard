@@ -37,6 +37,11 @@ the running stack, reseeds first), `make seed` (wipe + reseed), `make cli ARGS="
 
 ### Hosted demo (no install)
 
+**Live:** https://flowboard-oqnw.onrender.com (pick Alice, Bob or Carol with “Acting as”; data resets every 6 hours;
+the first visit after ~15 idle minutes takes about a minute while the free instance wakes up).
+
+To host your own copy:
+
 [![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/VivekBisht2103/flowboard)
 
 The root [`Dockerfile`](Dockerfile) builds a single container in which one Go process serves the React app, the
